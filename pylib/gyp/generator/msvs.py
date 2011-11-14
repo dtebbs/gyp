@@ -253,8 +253,8 @@ def _ConfigFullName(config_name, config_data):
   return '%s|%s' % (_ConfigBaseName(config_name, platform_name), platform_name)
 
 
-def _BuildCommandLineForRuleRaw(spec, cmd, cygwin_shell, has_input_path,
-                                quote_cmd):
+def _BuildCommandLineForRuleRaw(spec, cmd, cygwin_shell, fix_paths,
+                                has_input_path, quote_cmd):
 
   if [x for x in cmd if '$(InputDir)' in x]:
     input_dir_preamble = (
@@ -305,7 +305,10 @@ def _BuildCommandLineForRuleRaw(spec, cmd, cygwin_shell, has_input_path,
     if cmd[0] == 'cat':
       command = ['type']
     else:
-      command = [cmd[0].replace('/', '\\')]
+      if fix_paths:
+        command = [cmd[0].replace('/', '\\')]
+      else:
+        command = [cmd[0]]
     # Fix the paths
     # If the argument starts with a slash, it's probably a command line switch
     arguments = [i.startswith('/') and i or _FixPath(i) for i in cmd[1:]]
@@ -332,9 +335,10 @@ def _BuildCommandLineForRule(spec, rule, has_input_path):
     mcs = int(spec.get('msvs_cygwin_shell', 1))
   elif isinstance(mcs, str):
     mcs = int(mcs)
+  fix_paths = int(rule.get('msvs_fix_action_paths', 1))
   quote_cmd = int(rule.get('msvs_quote_cmd', 1))
-  return _BuildCommandLineForRuleRaw(spec, rule['action'], mcs, has_input_path,
-                                     quote_cmd)
+  return _BuildCommandLineForRuleRaw(spec, rule['action'], mcs, fix_paths,
+                                     has_input_path, quote_cmd)
 
 
 def _AddActionStep(actions_dict, inputs, outputs, description, command):
