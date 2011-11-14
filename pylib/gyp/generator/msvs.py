@@ -301,6 +301,7 @@ def _BuildCommandLineForRuleRaw(spec, cmd, cygwin_shell, fix_paths,
                  'cmd': direct_cmd}
     return input_dir_preamble + cmd
   else:
+    print "_BuildCommandLineForRuleRaw: cmd %s" % cmd
     # Convert cat --> type to mimic unix.
     if cmd[0] == 'cat':
       command = ['type']
@@ -341,7 +342,7 @@ def _BuildCommandLineForRule(spec, rule, has_input_path):
                                      has_input_path, quote_cmd)
 
 
-def _AddActionStep(actions_dict, inputs, outputs, description, command):
+def _AddActionStep(actions_dict, inputs, outputs, description, command, config):
   """Merge action into an existing list of actions.
 
   Care must be taken so that actions which have overlapping inputs either don't
@@ -371,13 +372,14 @@ def _AddActionStep(actions_dict, inputs, outputs, description, command):
   chosen_input = inputs[0]
 
   # Add it there.
-  if chosen_input not in actions_dict:
-    actions_dict[chosen_input] = []
-  actions_dict[chosen_input].append(action)
+  config_actions_dict = actions_dict[config]
+  if chosen_input not in config_actions_dict:
+    config_actions_dict[chosen_input] = []
+  config_actions_dict[chosen_input].append(action)
 
 
 def _AddCustomBuildToolForMSVS(p, spec, primary_input,
-                               inputs, outputs, description, cmd):
+                               inputs, outputs, description, cmd, config):
   """Add a custom build tool to execute something.
 
   Arguments:
@@ -388,21 +390,22 @@ def _AddCustomBuildToolForMSVS(p, spec, primary_input,
     outputs: list of outputs
     description: description of the action
     cmd: command line to execute
+    config: configuration to add it to
   """
   inputs = _FixPaths(inputs)
   outputs = _FixPaths(outputs)
+  print "Adding custom cmd: %s" % cmd
   tool = MSVSProject.Tool(
-      'VCCustomBuildTool',
-      {'Description': description,
-       'AdditionalDependencies': ';'.join(inputs),
-       'Outputs': ';'.join(outputs),
-       'CommandLine': cmd,
-      })
+    'VCCustomBuildTool',
+    {'Description': description,
+     'AdditionalDependencies': ';'.join(inputs),
+     'Outputs': ';'.join(outputs),
+     'CommandLine': cmd
+     })
   # Add to the properties of primary input for each config.
-  for config_name, c_data in spec['configurations'].iteritems():
-    p.AddFileConfig(_FixPath(primary_input),
-                    _ConfigFullName(config_name, c_data), tools=[tool])
-
+  c_data = spec['configurations'][config]
+  p.AddFileConfig(_FixPath(primary_input),
+                  _ConfigFullName(config, c_data), tools=[tool])
 
 def _AddAccumulatedActionsToMSVS(p, spec, actions_dict):
   """Add actions accumulated into an actions_dict, merging as needed.
@@ -413,25 +416,29 @@ def _AddAccumulatedActionsToMSVS(p, spec, actions_dict):
     actions_dict: dictionary keyed on input name, which maps to a list of
         dicts describing the actions attached to that input file.
   """
-  for primary_input in actions_dict:
-    inputs = set()
-    outputs = set()
-    descriptions = []
-    commands = []
-    for action in actions_dict[primary_input]:
-      inputs.update(set(action['inputs']))
-      outputs.update(set(action['outputs']))
-      descriptions.append(action['description'])
-      commands.append(action['command'])
-    # Add the custom build step for one input file.
-    description = ', and also '.join(descriptions)
-    command = '\r\n'.join(commands)
-    _AddCustomBuildToolForMSVS(p, spec,
-                               primary_input=primary_input,
-                               inputs=inputs,
-                               outputs=outputs,
-                               description=description,
-                               cmd=command)
+  for config in actions_dict:
+    print "_AddAccumulatedActionsToMSVS: config %s" % config
+    config_actions_dict = actions_dict[config]
+    for primary_input in config_actions_dict:
+      inputs = set()
+      outputs = set()
+      descriptions = []
+      commands = []
+      for action in config_actions_dict[primary_input]:
+        inputs.update(set(action['inputs']))
+        outputs.update(set(action['outputs']))
+        descriptions.append(action['description'])
+        commands.append(action['command'])
+      # Add the custom build step for one input file.
+      description = ', and also '.join(descriptions)
+      command = '\r\n'.join(commands)
+      _AddCustomBuildToolForMSVS(p, spec,
+                                 primary_input=primary_input,
+                                 inputs=inputs,
+                                 outputs=outputs,
+                                 description=description,
+                                 cmd=command,
+                                 config=config)
 
 
 def _RuleExpandPath(path, input_file):
@@ -805,7 +812,10 @@ def _FilterActionsFromExcluded(excluded_sources, actions_to_add):
   Returns:
     excluded_sources with files that have actions attached removed.
   """
-  must_keep = set(_FixPaths(actions_to_add.keys()))
+  must_keep = []
+  for conf in actions_to_add:
+    print "_FilterActionsFromExcluded, config %s" % conf
+    must_keep +=_FixPaths(actions_to_add[conf].keys())
   return [s for s in excluded_sources if s not in must_keep]
 
 
@@ -866,6 +876,7 @@ def _GenerateMSVSProject(project, options, version):
     version: The VisualStudioVersion object.
   """
   spec = project.spec
+  configurations = spec['configurations']
   vcproj_dir = os.path.dirname(project.path)
   if vcproj_dir and not os.path.exists(vcproj_dir):
     os.makedirs(vcproj_dir)
@@ -880,7 +891,7 @@ def _GenerateMSVSProject(project, options, version):
   relative_path_of_gyp_file = gyp.common.RelativePath(gyp_path, project_dir)
 
   config_type = _GetMSVSConfigurationType(spec, project.build_file)
-  for config_name, config in spec['configurations'].iteritems():
+  for config_name, config in configurations.iteritems():
     _AddConfigurationToMSVSProject(p, spec, config_type, config_name, config)
 
   # Prepare list of sources and excluded sources.
@@ -889,6 +900,9 @@ def _GenerateMSVSProject(project, options, version):
 
   # Add rules.
   actions_to_add = {}
+  for conf in configurations:
+    actions_to_add[conf] = {}
+
   _GenerateRulesForMSVS(p, project_dir, options, spec,
                         sources, excluded_sources,
                         actions_to_add)
@@ -902,7 +916,8 @@ def _GenerateMSVSProject(project, options, version):
 
   _AddToolFilesToMSVS(p, spec)
   _HandlePreCompiledHeaders(p, sources, spec)
-  _AddActions(actions_to_add, spec, relative_path_of_gyp_file)
+  for conf in configurations:
+    _AddActions(actions_to_add, spec, relative_path_of_gyp_file, conf)
   _AddCopies(actions_to_add, spec)
   _WriteMSVSUserFile(project.path, version, spec)
 
@@ -1442,7 +1457,7 @@ def _HandlePreCompiledHeaders(p, sources, spec):
     DisableForSourceTree(sources)
 
 
-def _AddActions(actions_to_add, spec, relative_path_of_gyp_file):
+def _AddActions(actions_to_add, spec, relative_path_of_gyp_file, conf):
   # Add actions.
   actions = spec.get('actions', [])
   for a in actions:
@@ -1454,7 +1469,8 @@ def _AddActions(actions_to_add, spec, relative_path_of_gyp_file):
                    inputs=inputs,
                    outputs=a.get('outputs', []),
                    description=a.get('message', a['action_name']),
-                   command=cmd)
+                   command=cmd,
+                   config=conf)
 
 
 def _WriteMSVSUserFile(project_path, version, spec):
@@ -1471,6 +1487,7 @@ def _WriteMSVSUserFile(project_path, version, spec):
   else:
     return  # Nothing to add
   # Write out the user file.
+  print "USER FILE"
   user_file = _CreateMSVSUserFile(project_path, version, spec)
   for config_name, c_data in spec['configurations'].iteritems():
     user_file.AddDebugSettings(_ConfigFullName(config_name, c_data),
@@ -1481,6 +1498,7 @@ def _WriteMSVSUserFile(project_path, version, spec):
 def _AddCopies(actions_to_add, spec):
   copies = _GetCopies(spec)
   for inputs, outputs, cmd, description in copies:
+    print "!! COPY ..."
     _AddActionStep(actions_to_add, inputs=inputs, outputs=outputs,
                    description=description, command=cmd)
 
@@ -2770,7 +2788,7 @@ def _GenerateMSBuildProject(project, options, version):
 
   gyp_file = os.path.split(project.build_file)[1]
   sources, excluded_sources = _PrepareListOfSources(spec, gyp_file)
-  # Add rules.
+  # Add rules for each configuration
   actions_to_add = {}
   props_files_of_rules = set()
   targets_files_of_rules = set()
