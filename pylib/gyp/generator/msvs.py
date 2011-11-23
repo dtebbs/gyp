@@ -301,7 +301,7 @@ def _BuildCommandLineForRuleRaw(spec, cmd, cygwin_shell, fix_paths,
                  'cmd': direct_cmd}
     return input_dir_preamble + cmd
   else:
-    print "_BuildCommandLineForRuleRaw: cmd %s" % cmd
+    #print "_BuildCommandLineForRuleRaw: cmd %s" % cmd
     # Convert cat --> type to mimic unix.
     if cmd[0] == 'cat':
       command = ['type']
@@ -394,7 +394,7 @@ def _AddCustomBuildToolForMSVS(p, spec, primary_input,
   """
   inputs = _FixPaths(inputs)
   outputs = _FixPaths(outputs)
-  print "Adding custom cmd: %s" % cmd
+  #print "Adding custom cmd: %s" % cmd
   tool = MSVSProject.Tool(
     'VCCustomBuildTool',
     {'Description': description,
@@ -417,7 +417,7 @@ def _AddAccumulatedActionsToMSVS(p, spec, actions_dict):
         dicts describing the actions attached to that input file.
   """
   for config in actions_dict:
-    print "_AddAccumulatedActionsToMSVS: config %s" % config
+    #print "_AddAccumulatedActionsToMSVS: config %s" % config
     config_actions_dict = actions_dict[config]
     for primary_input in config_actions_dict:
       inputs = set()
@@ -814,7 +814,7 @@ def _FilterActionsFromExcluded(excluded_sources, actions_to_add):
   """
   must_keep = []
   for conf in actions_to_add:
-    print "_FilterActionsFromExcluded, config %s" % conf
+    #print "_FilterActionsFromExcluded, config %s" % conf
     must_keep +=_FixPaths(actions_to_add[conf].keys())
   return [s for s in excluded_sources if s not in must_keep]
 
