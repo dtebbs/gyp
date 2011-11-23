@@ -2459,10 +2459,23 @@ class PBXAggregateTarget(XCTarget):
 
 
 class PBXLegacyTarget(XCTarget):
+  # Listed as an 'External Target' in the New Target wizard.  A script
+  # is run and passed environment variables such as
+  # ACTION={clean,build,install} etc.  Intended for integration with
+  # make based builds.
+  """
+
+  Attributes:
+    buildToolPath: tool to run
+    buildArgumentsString: args to pass to the build tool
+    buildWorkingDirectory: directory from which to run the build tool
+
+
+  """
 
   _schema = XCTarget._schema.copy()
   _schema.update({
-      'buildToolPath':           [0, str, 0, 1, "make"],
+      'buildToolPath':           [0, str, 0, 1, "/usr/bin/make"],
       'buildArgumentsString':    [0, str, 0, 1, "$(ACTION)"],
       'buildWorkingDirectory':   [0, str, 0, 1 ],
       })
@@ -2472,7 +2485,6 @@ class PBXLegacyTarget(XCTarget):
     # super
     XCTarget.__init__(self, properties, id, parent)
 
-    print "PBXLegacyTarget. _properties = %s" % self._properties
 
 class PBXProject(XCContainerPortal):
   # A PBXProject is really just an XCObject, the XCContainerPortal thing is
