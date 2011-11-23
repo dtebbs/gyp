@@ -70,6 +70,7 @@ generator_additional_path_sections = [
 # configurations.
 generator_additional_non_configuration_keys = [
   'mac_bundle',
+  'mac_external',
   'mac_bundle_resources',
   'mac_framework_headers',
   'mac_framework_private_headers',
@@ -666,6 +667,7 @@ def GenerateOutput(target_list, target_dicts, data, params):
 
     type = spec['type']
     is_bundle = int(spec.get('mac_bundle', 0))
+    mac_external = int(spec.get('mac_external', 0))
     if type != 'none':
       type_bundle_key = type
       if is_bundle:
@@ -678,7 +680,10 @@ def GenerateOutput(target_list, target_dicts, data, params):
                                    "writing target %s" % target_name)
         raise
     else:
-      xctarget_type = gyp.xcodeproj_file.PBXAggregateTarget
+      if mac_external:
+        xctarget_type = gyp.xcodeproj_file.PBXLegacyTarget
+      else:
+        xctarget_type = gyp.xcodeproj_file.PBXAggregateTarget
       assert not is_bundle, (
           'mac_bundle targets cannot have type none (target "%s")' %
           target_name)
@@ -751,25 +756,38 @@ def GenerateOutput(target_list, target_dicts, data, params):
       # Include the optional message
       if message_sh:
         script += message_sh + '\n'
-      # Be sure the script runs in exec, and that if exec fails, the script
-      # exits signalling an error.
-      script += 'exec ' + action_string_sh + '\nexit 1\n'
-      ssbp = gyp.xcodeproj_file.PBXShellScriptBuildPhase({
-            'inputPaths': action['inputs'],
-            'name': 'Action "' + action['action_name'] + '"',
-            'outputPaths': action['outputs'],
-            'shellScript': script,
-            'showEnvVarsInLog': 0,
-          })
 
-      if support_xct:
-        support_xct.AppendProperty('buildPhases', ssbp)
+      if mac_external:
+        script += action_string_sh
+        words = script.split(' ')
+        tool = words[0]
+        arguments = ' '.join(words[1:])
+
+        xct._properties['buildToolPath'] = tool
+        xct._properties['buildArgumentsString'] = arguments
+        xct._properties['buildWorkingDirectory'] = '.'
+
       else:
-        # TODO(mark): this assumes too much knowledge of the internals of
-        # xcodeproj_file; some of these smarts should move into xcodeproj_file
-        # itself.
-        xct._properties['buildPhases'].insert(prebuild_index, ssbp)
-        prebuild_index = prebuild_index + 1
+        # Be sure the script runs in exec, and that if exec fails, the
+        # script exits signalling an error.
+        script += 'exec ' + action_string_sh + '\nexit 1\n'
+
+        ssbp = gyp.xcodeproj_file.PBXShellScriptBuildPhase({
+              'inputPaths': action['inputs'],
+              'name': 'Action "' + action['action_name'] + '"',
+              'outputPaths': action['outputs'],
+              'shellScript': script,
+              'showEnvVarsInLog': 0,
+            })
+
+        if support_xct:
+          support_xct.AppendProperty('buildPhases', ssbp)
+        else:
+          # TODO(mark): this assumes too much knowledge of the internals of
+          # xcodeproj_file; some of these smarts should move into xcodeproj_file
+          # itself.
+          xct._properties['buildPhases'].insert(prebuild_index, ssbp)
+          prebuild_index = prebuild_index + 1
 
       # TODO(mark): Should verify that at most one of these is specified.
       if int(action.get('process_outputs_as_sources', False)):

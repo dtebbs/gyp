@@ -139,6 +139,39 @@ Strings of class unicode are handled properly and encoded in UTF-8 when
 a project file is output.
 """
 
+
+""" Sample Aggregate section:
+		00F8711A4C1BDFDF516BFC49 /* test_ */ = {
+			isa = PBXAggregateTarget;
+			buildConfigurationList = 8D6BBDC88F52872397578763 /* Build configuration list for PBXAggregateTarget "test_" */;
+			buildPhases = (
+				E593772EC8E096171E5B5AC2 /* Action "build test_" */,
+			);
+			dependencies = (
+				FFF8820D688F3C37E67BA897 /* PBXTargetDependency */,
+			);
+			name = test_;
+			productName = test_;
+		};
+"""
+
+""" Sample external build section
+		C585D01D147B8D51006B2BB7 /* test_ext */ = {
+			isa = PBXLegacyTarget;
+			buildArgumentsString = "$(ACTION)";
+			buildConfigurationList = C585D028147B8D66006B2BB7 /* Build configuration list for PBXLegacyTarget "test_ext" */;
+			buildPhases = (
+			);
+			buildToolPath = /usr/bin/make;
+			dependencies = (
+			);
+			name = test_ext;
+			passBuildSettingsInEnvironment = 1;
+			productName = test_ext;
+		};
+
+"""
+
 import gyp.common
 import posixpath
 import re
@@ -2424,6 +2457,22 @@ class PBXNativeTarget(XCTarget):
 class PBXAggregateTarget(XCTarget):
   pass
 
+
+class PBXLegacyTarget(XCTarget):
+
+  _schema = XCTarget._schema.copy()
+  _schema.update({
+      'buildToolPath':           [0, str, 0, 1, "make"],
+      'buildArgumentsString':    [0, str, 0, 1, "$(ACTION)"],
+      'buildWorkingDirectory':   [0, str, 0, 1 ],
+      })
+
+  def __init__(self, properties=None, id=None, parent=None,
+               force_outdir=None, force_prefix=None, force_extension=None):
+    # super
+    XCTarget.__init__(self, properties, id, parent)
+
+    print "PBXLegacyTarget. _properties = %s" % self._properties
 
 class PBXProject(XCContainerPortal):
   # A PBXProject is really just an XCObject, the XCContainerPortal thing is
