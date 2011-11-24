@@ -303,22 +303,43 @@ def _BuildCommandLineForRuleRaw(spec, cmd, cygwin_shell, fix_paths,
   else:
     #print "_BuildCommandLineForRuleRaw: cmd %s" % cmd
     # Convert cat --> type to mimic unix.
-    if cmd[0] == 'cat':
-      command = ['type']
-    else:
-      if fix_paths:
-        command = [cmd[0].replace('/', '\\')]
-      else:
-        command = [cmd[0]]
+    # if cmd[0] == 'cat':
+    #   command = ['type']
+    # else:
+    #   if fix_paths:
+    #     command = [cmd[0].replace('/', '\\')]
+    #   else:
+    #     command = [cmd[0]]
     # Fix the paths
-    # If the argument starts with a slash, it's probably a command line switch
-    arguments = [i.startswith('/') and i or _FixPath(i) for i in cmd[1:]]
-    arguments = [i.replace('$(InputDir)','%INPUTDIR%') for i in arguments]
+
+    new_cmd = []
+    for c in cmd:
+      print "Fixing '%s'" % c
+
+      words = []
+      for w in c.split(' '):
+
+        # If the argument starts with a slash, it's probably a command
+        # line switch, otherwise fix the path
+        if not w.startswith('/'):
+          w = _FixPath(w)
+
+        w.replace('$(InputDir)','%INPUTDIR%')
+        words.append(w)
+
+      c = ' '.join(words)
+      print " became '%s'" % c
+      new_cmd.append(c)
+
+    command = [new_cmd[0]]
+    arguments = new_cmd[1:]
+
     if quote_cmd:
       # Support a mode for using cmd directly.
       # Convert any paths to native form (first element is used directly).
       # TODO(quote):  regularize quoting path names throughout the module
       arguments = ['"%s"' % i for i in arguments]
+
     # Collapse into a single command.
     return input_dir_preamble + ' '.join(command + arguments)
 
