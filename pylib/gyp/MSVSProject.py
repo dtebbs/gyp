@@ -150,6 +150,7 @@ class Writer(object):
         node = ['File', {'RelativePath': f}]
         self.files_dict[f] = node
       parent.append(node)
+      #print "Adding node %s" % node
 
   def AddFiles(self, files):
     """Adds files to the project.

@@ -77,6 +77,7 @@ generator_additional_non_configuration_keys = [
     'msvs_cygwin_dirs',
     'msvs_cygwin_shell',
     'msvs_shard',
+    'msvs_strip_hierarchy',
 ]
 
 
@@ -164,26 +165,10 @@ def _FixPaths(paths):
   return [_FixPath(i) for i in paths]
 
 
-def _ConvertSourcesToFilterHierarchy(sources, prefix=None, excluded=None):
-  """Converts a list split source file paths into a vcproj folder hierarchy.
-
-  Arguments:
-    sources: A list of source file paths split.
-    prefix: A list of source file path layers meant to apply to each of sources.
-    excluded: A set of excluded files.
-
-  Returns:
-    A hierarchy of filenames and MSVSProject.Filter objects that matches the
-    layout of the source tree.
-    For example:
-    _ConvertSourcesToFilterHierarchy([['a', 'bob1.c'], ['b', 'bob2.c']],
-                                     prefix=['joe'])
-    -->
-    [MSVSProject.Filter('a', contents=['joe\\a\\bob1.c']),
-     MSVSProject.Filter('b', contents=['joe\\b\\bob2.c'])]
-  """
-  if not prefix: prefix = []
-  result = []
+def _DoConvertSourcesToFilterRecurse(result, sources, prefix, excluded,
+                                     layers_to_strip):
+  if layers_to_strip < 0:
+    layers_to_strip = 0
   excluded_result = []
   folders = dict()
   # Gather files into the final result, excluded, or folders.
@@ -205,12 +190,49 @@ def _ConvertSourcesToFilterHierarchy(sources, prefix=None, excluded=None):
     result.append(excluded_folder)
   # Populate all the folders.
   for f in folders:
-    contents = _ConvertSourcesToFilterHierarchy(folders[f], prefix=prefix + [f],
-                                                excluded=excluded)
-    contents = MSVSProject.Filter(f, contents=contents)
-    result.append(contents)
+    contents = []
+    _DoConvertSourcesToFilterRecurse(contents, folders[f],
+                                     prefix=prefix + [f],
+                                     excluded=excluded,
+                                     layers_to_strip=layers_to_strip-1)
+    if layers_to_strip == 0:
+      contents = MSVSProject.Filter(f, contents=contents)
+      result.append(contents)
+    else:
+      result += contents
+
+  #print "layers_to_strip %d result: %s" % (layers_to_strip, result)
+
+def _ConvertSourcesToFilterHierarchy(sources, prefix=None, excluded=None,
+                                     layers_to_strip = 0):
+  """Converts a list split source file paths into a vcproj folder hierarchy.
+
+  Arguments:
+    sources: A list of source file paths split.
+    prefix: A list of source file path layers meant to apply to each of sources.
+    excluded: A set of excluded files.
+
+  Returns:
+    A hierarchy of filenames and MSVSProject.Filter objects that matches the
+    layout of the source tree.
+    For example:
+    _ConvertSourcesToFilterHierarchy([['a', 'bob1.c'], ['b', 'bob2.c']],
+                                     prefix=['joe'])
+    -->
+    [MSVSProject.Filter('a', contents=['joe\\a\\bob1.c']),
+     MSVSProject.Filter('b', contents=['joe\\b\\bob2.c'])]
+  """
+
+  if not prefix: prefix = []
+  result = []
+
+  _DoConvertSourcesToFilterRecurse(result, sources, prefix, excluded,
+                                   layers_to_strip)
 
   return result
+
+#  print "_ConvertSourcesToFilterHierarchy: sources=%s, prefix=%s, excluded=%s" % (sources, prefix, excluded)
+
 
 
 def _ToolAppend(tools, tool_name, setting, value, only_if_unset=False):
@@ -314,8 +336,6 @@ def _BuildCommandLineForRuleRaw(spec, cmd, cygwin_shell, fix_paths,
 
     new_cmd = []
     for c in cmd:
-      print "Fixing '%s'" % c
-
       words = []
       for w in c.split(' '):
 
@@ -328,7 +348,6 @@ def _BuildCommandLineForRuleRaw(spec, cmd, cygwin_shell, fix_paths,
         words.append(w)
 
       c = ' '.join(words)
-      print " became '%s'" % c
       new_cmd.append(c)
 
     command = [new_cmd[0]]
@@ -931,6 +950,7 @@ def _GenerateMSVSProject(project, options, version):
       _AdjustSourcesAndConvertToFilterHierarchy(
           spec, options, project_dir, sources, excluded_sources))
 
+  #print "_GenerateMSVSProject: sources: %s" % sources
   # Add in files.
   _VerifySourcesExist(sources, project_dir)
   p.AddFiles(sources)
@@ -1363,7 +1383,14 @@ def _AdjustSourcesAndConvertToFilterHierarchy(
 
   # Convert to folders and the right slashes.
   sources = [i.split('\\') for i in sources]
-  sources = _ConvertSourcesToFilterHierarchy(sources, excluded=fully_excluded)
+
+  # Remove the first N layers of hierarchy from paths that are deep enough
+  layers_to_remove = int(spec.get('msvs_strip_hierarchy', 2))
+  print "Remove %d layers" % layers_to_remove
+
+  sources = _ConvertSourcesToFilterHierarchy(sources,
+                                             excluded=fully_excluded,
+                                             layers_to_strip=layers_to_remove)
   # Add in dummy file for type none.
   if spec['type'] == 'dummy_executable':
     # Pull in a dummy main so it can link successfully.
