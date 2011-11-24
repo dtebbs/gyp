@@ -1386,7 +1386,7 @@ def _AdjustSourcesAndConvertToFilterHierarchy(
 
   # Remove the first N layers of hierarchy from paths that are deep enough
   layers_to_remove = int(spec.get('msvs_strip_hierarchy', 2))
-  print "Remove %d layers" % layers_to_remove
+  #print "Remove %d layers" % layers_to_remove
 
   sources = _ConvertSourcesToFilterHierarchy(sources,
                                              excluded=fully_excluded,
