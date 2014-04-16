@@ -1511,6 +1511,7 @@ class PBXFileReference(XCFileLikeElement, XCContainerPortal, XCRemoteObject):
         'xcconfig':  'text.xcconfig',
         'xib':       'file.xib',
         'y':         'sourcecode.yacc',
+        'iconset':   'folder.iconset',
       }
 
       if is_dir:
